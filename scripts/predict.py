@@ -23,7 +23,7 @@ def entry(rid):
     s = get(f"https://race.netkeiba.com/race/shutuba.html?race_id={rid}", enc="utf-8")
     d1 = txt(re.search(r"RaceData01.*?</div>", s, re.S).group(0))
     d2 = re.sub(r"\s+", " ", txt(re.search(r"RaceData02.*?</div>", s, re.S).group(0)))
-    head = re.search(r'class="RaceName".*?</h1>', s, re.S).group(0)
+    head = re.search(r'class="RaceName">(.*?)</h1>', s, re.S).group(1)
     name = txt(head)
     gm = re.search(r"Icon_GradeType(\d+)", head)
     m = re.search(r"(芝|ダ|障)(\d+)m", d1)
@@ -34,6 +34,8 @@ def entry(rid):
         if "Cancel" in tr or "取消" in tr or "除外" in tr:
             continue
         tds = re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
+        if len(tds) < 7 or not txt(tds[1]).isdigit():
+            continue  # 出走馬以外の行
         hid = re.search(r"/horse/(\d+)", tr)
         rows.append(dict(waku=int(txt(tds[0])), umaban=int(txt(tds[1])), horse_id=hid.group(1),
                          horse=txt(re.search(r'class="HorseName">(.*?)</span>', tr, re.S).group(1)),
@@ -62,7 +64,7 @@ def predict(rid, hist, base, coef):
     e["mkt_p"] = (1 / e.odds) / (1 / e.odds).sum()
     e["p_mkt"] = base.predict(e[BASE_FEATS])
     h = hist.reindex(e.horse_id)
-    today = pd.Timestamp(f"20{rid[2:4]}-01-01") if False else pd.Timestamp.today().normalize()
+    today = pd.Timestamp.today().normalize()
     e["p2_rank"] = h.p_rank.values
     e["p_pos4_rel"] = h.pos4_rel.values
     e["surf_chg"] = np.where(h.surface.isna(), np.nan, (h.surface.values != race["surface"]).astype(float))
