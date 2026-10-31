@@ -134,7 +134,7 @@ inter.sort_values("z_inter", key=abs, ascending=False).to_csv(os.path.join(OUT, 
 
 # ---------- 4. 機械学習：オッズのみ vs 全特徴量（後半期間で評価）----------
 from sklearn.metrics import log_loss, roc_auc_score
-feats = base_feats + num_feats + cat_feats
+feats = list(dict.fromkeys(base_feats + num_feats + cat_feats))
 X = an[feats].copy()
 for c in cat_feats:
     X[c] = X[c].astype("category")
@@ -150,9 +150,27 @@ for name, fs in [("odds_only", base_feats), ("all", feats), ("no_odds", [f for f
     if name == "all":
         imp = pd.Series(m.booster_.feature_importance("gain"), index=fs).sort_values(ascending=False)
         imp.to_csv(os.path.join(OUT, "lgbm_gain.csv"))
+# 市場確率(exp3)を初期値にして「上乗せ分」だけ学習するモデル（H1末尾2か月で早期打ち切り）
+from scipy.special import logit, expit
+fs = [f for f in feats if f not in base_feats]
+dates_h1 = an.loc[tr, "date"]
+cut = dates_h1.quantile(0.75)  # H1の最後の1/4で早期打ち切り
+fit, val = tr & (an.date <= cut), tr & (an.date > cut)
+init = logit(an.exp3.clip(1e-4, 1 - 1e-4))
+m = lgb.LGBMClassifier(n_estimators=3000, learning_rate=0.01, num_leaves=15, min_child_samples=300, reg_lambda=10,
+                       subsample=0.8, subsample_freq=1, colsample_bytree=0.7, verbose=-1)
+m.fit(X.loc[fit, fs], an.loc[fit, "top3"], init_score=init[fit], eval_set=[(X.loc[val, fs], an.loc[val, "top3"])],
+      eval_init_score=[init[val]], callbacks=[lgb.early_stopping(100, verbose=False)])
+p = expit(init[te] + m.predict(X.loc[te, fs], raw_score=True))
+an.loc[te, "p_market_plus"] = p
+p0 = an.loc[te, "exp3"]
+res["market_plus"] = dict(logloss=log_loss(an.loc[te, "top3"], p), auc=roc_auc_score(an.loc[te, "top3"], p), trees=int(m.best_iteration_ or 0))
+res["market_base"] = dict(logloss=log_loss(an.loc[te, "top3"], p0), auc=roc_auc_score(an.loc[te, "top3"], p0))
+an.loc[te, "p_market_base"] = p0
+pd.Series(m.booster_.feature_importance("gain"), index=fs).sort_values(ascending=False).to_csv(os.path.join(OUT, "market_plus_gain.csv"))
 # 各レースで予測1位の馬の3着内率（=本命の的中率）
 t = an[te]
-for name in res:
+for name in list(res):
     top = t.loc[t.groupby("race_id")["p_" + name].idxmax()]
     res[name]["pick1_top3"] = top.top3.mean(); res[name]["pick1_roi"] = top.fukusho_pay.mean() / 100
     top3 = t[t.groupby("race_id")["p_" + name].rank(ascending=False, method="first") <= 3]
