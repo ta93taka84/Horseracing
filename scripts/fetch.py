@@ -47,16 +47,17 @@ def fetch_race(rid):
 
 
 if __name__ == "__main__":
+    # 使い方: python3 fetch.py [終了日YYYYMMDD]  既存の race_ids.json に足りない開催日を追加して取得
+    end = sys.argv[1] if len(sys.argv) > 1 else "20261025"
     idx = os.path.join(DATA, "race_ids.json")
-    if os.path.exists(idx):
-        ids = json.load(open(idx))
-    else:
-        ds = [d for d in dates((2025, 8), (2026, 10)) if "20250801" <= d <= "20261025"]
-        ids = {}
-        for d in ds:
-            ids[d] = [r for r in race_ids(d) if int(r[4:6]) <= 10]  # JRA場コード01-10
-            time.sleep(0.3)
-        json.dump(ids, open(idx, "w"), indent=0)
+    ids = json.load(open(idx)) if os.path.exists(idx) else {}
+    start = max(ids) if ids else "20250801"
+    ds = [d for d in dates((int(start[:4]), int(start[4:6])), (int(end[:4]), int(end[4:6]))) if start < d <= end or not ids]
+    for d in ds:
+        if d in ids: continue
+        ids[d] = [r for r in race_ids(d) if int(r[4:6]) <= 10]  # JRA場コード01-10
+        time.sleep(0.3)
+    json.dump(dict(sorted(ids.items())), open(idx, "w"), indent=0)
     allr = [r for v in ids.values() for r in v]
     print(len(ids), "days", len(allr), "races", flush=True)
     done = 0
