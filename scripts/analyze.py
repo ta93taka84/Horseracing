@@ -45,7 +45,7 @@ df = df.merge(daily[key + ["date", "jockey_course_ae"]], on=key + ["date"], how=
 # 種牡馬・母父（あれば）：全体A/E と 芝ダ×距離帯別A/E（前日までの累積）
 PED = os.path.join(os.path.dirname(__file__), "..", "data", "pedigree.csv")
 df["dist_band"] = pd.cut(df.dist, [0, 1400, 1800, 2200, 4000], labels=["短", "マイル", "中", "長"]).astype(str)
-if os.path.exists(PED):
+if os.path.exists(PED) and not os.environ.get("NOPED"):
     pe = pd.read_csv(PED, dtype=str).drop_duplicates("horse_id")
     df = df.merge(pe[["horse_id", "sire", "damsire", "sire_sire"]], on="horse_id", how="left")
     for name, key in [("sire_ae", ["sire"]), ("damsire_ae", ["damsire"]), ("sire_cond_ae", ["sire", "surface", "dist_band"]),
