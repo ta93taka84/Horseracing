@@ -42,6 +42,8 @@ def fetch_race(rid):
     if os.path.exists(p) and os.path.getsize(p) > 20000:
         return
     s = get(f"https://db.netkeiba.com/race/{rid}/")
+    if "race_table_01" not in s:
+        return  # 結果がまだDBに反映されていない
     open(p, "w").write(s)
     time.sleep(0.5 + random.random() * 0.5)
 

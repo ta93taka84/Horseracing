@@ -27,7 +27,7 @@ def entry(rid):
     name = txt(head)
     gm = re.search(r"Icon_GradeType(\d+)", head)
     m = re.search(r"(芝|ダ|障)(\d+)m", d1)
-    race = dict(race_id=rid, name=name, surface=m.group(1), dist=int(m.group(2)), cond=d2)
+    race = dict(race_id=rid, name=name, post=(re.search(r"(\d+:\d+)発走", d1) or [None, ""])[1], surface=m.group(1), dist=int(m.group(2)), cond=d2)
     race["klass"] = GRADE.get(gm.group(1), 4) if gm else klass(dict(cond=d2, name=name))
     rows = []
     for tr in re.findall(r'<tr class="HorseList[^"]*"[^>]*>(.*?)</tr>', s, re.S):
@@ -79,7 +79,7 @@ def predict(rid, hist, base, coef):
     e = e.sort_values("p_adj", ascending=False).reset_index(drop=True)
     mkt_top3 = set(e.nlargest(3, "p_mkt").umaban); adj_top3 = set(e.head(3).umaban)
     e["チェック"] = np.where((e.補正.abs() >= FLAG) | (e.umaban.isin(mkt_top3 ^ adj_top3)), "★", "")
-    print(f"\n■ {rid} {race['name']} {race['surface']}{race['dist']}m  オッズ時刻 {ts}")
+    print(f"\n■ {rid} {race['post']}発走 {race['name']} {race['surface']}{race['dist']}m  オッズ時刻 {ts}")
     out = e[["チェック", "umaban", "horse", "jockey", "odds", "pop", "p_mkt", "p_adj", "要因"]].copy()
     out[["p_mkt", "p_adj"]] = (out[["p_mkt", "p_adj"]] * 100).round(1)
     out.columns = ["★", "馬番", "馬名", "騎手", "単勝", "人気", "市場3着内%", "補正後%", "補正要因"]
