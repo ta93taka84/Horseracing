@@ -27,7 +27,6 @@ if __name__ == "__main__":
         print(buf.getvalue())
         top = e.iloc[0]; fk = fukusho(rid).get(int(top.umaban), (float("nan"), float("nan")))
         checks = [("推奨馬の補正後3着内確率 75%以上", top.p_adj >= P_MIN, f"{top.p_adj:.1%}"),
-                  ("ダート戦", race["surface"] == "ダ", race["surface"]),
                   ("推奨馬の単勝 1.7倍以上", top.odds >= TAN_MIN, f"{top.odds}倍"),
                   ("推奨馬の複勝オッズ下限 1.2倍以上", fk[0] >= FUKU_LOW_MIN, f"{fk[0]}〜{fk[1]}倍")]
         print(f"推奨馬: {top.umaban}番 {top.horse}（{top['pop']}番人気）  補正要因: {top['要因'] or 'なし'}")
