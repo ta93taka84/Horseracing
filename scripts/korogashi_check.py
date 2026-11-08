@@ -7,7 +7,7 @@ import predict
 from fetch import get
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-P_MIN, FUKU_LOW_MIN = 0.65, 1.2  # 条件リスト v3
+P_MIN, FUKU_LOW_MIN = 0.65, 1.2  # 条件リスト v3.1
 
 
 def fukusho(rid):
@@ -27,6 +27,7 @@ if __name__ == "__main__":
         print(buf.getvalue())
         top = e.iloc[0]; fk = fukusho(rid).get(int(top.umaban), (float("nan"), float("nan")))
         checks = [("障害戦ではない", race["surface"] != "障", race["surface"]),
+                  ("8頭以上（7頭以下は複勝2着まで）", len(e) >= 8, f"{len(e)}頭"),
                   ("推奨馬の補正後3着内確率 65%以上", top.p_adj >= P_MIN, f"{top.p_adj:.1%}"),
                   ("推奨馬の複勝オッズ下限 1.2倍以上", fk[0] >= FUKU_LOW_MIN, f"{fk[0]}〜{fk[1]}倍")]
         print(f"推奨馬: {top.umaban}番 {top.horse}（{top['pop']}番人気）  補正要因: {top['要因'] or 'なし'}")
