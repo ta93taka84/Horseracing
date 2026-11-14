@@ -14,7 +14,13 @@ def get(url, enc="euc-jp", tries=10):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "ja"})
             with urllib.request.urlopen(req, timeout=30) as r:
-                return r.read().decode(enc, errors="replace")
+                b = r.read()
+            if enc == "euc-jp":  # db.netkeiba は2026-11頃から一部UTF-8。UTF-8で読めればUTF-8を優先
+                try:
+                    return b.decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
+            return b.decode(enc, errors="replace")
         except Exception as e:
             time.sleep(min(2 ** i, 30) + random.random())
     raise RuntimeError("fail " + url)
