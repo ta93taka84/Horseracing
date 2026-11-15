@@ -57,6 +57,7 @@ def pairs(d):
             tip_sum=x["tip"] + y["tip"], tip_min=min(x["tip"], y["tip"]),
             odds_min=odds.get(key, {}).get("odds_min"), odds_max=odds.get(key, {}).get("odds_max"),
             payout=pay.get(key, 0.0),
+            p_tan=d.get("p_tan", {}).get(key),  # 3連単オッズから逆算した確率（モデルの特徴量には使わない）
             hit=int(x["finish"] <= 3 and y["finish"] <= 3),
         )
         rows.append(row)

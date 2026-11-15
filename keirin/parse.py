@@ -7,6 +7,32 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 TIP = {"◎": 1, "○": 2, "▲": 3, "△": 4, "×": 5, "注": 6}
+_ROW = re.compile(r'<tr>\s*<th class="n\d">(\d)</th>(.*?)</tr>', re.S)
+_TD = re.compile(r'<td(?: class="empty")?>\s*([\d.]*)\s*</td>')
+
+
+def trifecta_pair_probs(html):
+    """3連単オッズから「2車とも3着以内」の確率を逆算する。戻り値: {(a, b): 確率}。"""
+    a, b = html.find("3連単オッズ表 Start"), html.find("3連単オッズ表 End")
+    if a < 0:
+        return {}
+    trio = {}
+    for chunk in html[a:b].split('<table class="odds_table bt5')[1:]:
+        m = re.search(r'<span class="number">(\d)</span>', chunk)
+        if not m:
+            continue
+        cols = [int(x) for x in re.findall(r'<th class="n\d">(\d)</th>', chunk[:chunk.find('<td class="rider')])]
+        for r, body in _ROW.findall(chunk):
+            for c, v in zip(cols, _TD.findall(body)):
+                if v and float(v) > 0:
+                    key = tuple(sorted((int(m.group(1)), c, int(r))))
+                    trio[key] = trio.get(key, 0) + 1 / float(v)
+    total = sum(trio.values())
+    out = {}
+    for (i, j, k), q in trio.items():
+        for pair in ((i, j), (i, k), (j, k)):
+            out[pair] = out.get(pair, 0) + q / total
+    return out
 
 
 def _txt(el):
@@ -139,7 +165,7 @@ def parse(html, race_id):
     race["n_riders"] = len(riders)
     race["finished"] = any("finish" in r for r in riders.values())
     return {"race": race, "riders": list(riders.values()),
-            "odds": list(odds.values()), "payouts": payouts}
+            "odds": list(odds.values()), "payouts": payouts, "p_tan": trifecta_pair_probs(html)}
 
 
 def parse_file(path):

@@ -2,6 +2,7 @@
 
 使い方: python -m keirin.train
 """
+from multiprocessing import Pool
 from pathlib import Path
 
 import lightgbm as lgb
@@ -9,6 +10,7 @@ import pandas as pd
 from sklearn.metrics import log_loss, roc_auc_score
 
 from .features import FEATURES, pairs
+from . import value
 from .parse import parse_file
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,15 +19,38 @@ PARAMS = dict(objective="binary", learning_rate=0.03, num_leaves=31, min_child_s
               feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, lambda_l2=5.0, verbose=-1)
 
 
+def _one(f):
+    d = parse_file(f)
+    if d and d["race"]["finished"] and d["payouts"] and d["race"]["date"]:
+        return pairs(d)
+
+
 def build():
-    frames = []
-    for f in sorted((ROOT / "data" / "raw").glob("*.html.gz")):
-        d = parse_file(f)
-        if d and d["race"]["finished"] and d["payouts"] and d["race"]["date"]:
-            frames.append(pairs(d))
+    files = sorted((ROOT / "data" / "raw").glob("*.html.gz"))
+    with Pool(4) as pool:
+        frames = [x for x in pool.imap(_one, files, chunksize=20) if x is not None]
     df = pd.concat(frames, ignore_index=True)
     df.to_parquet(ROOT / "data" / "pairs.parquet")
     return df
+
+
+def value_backtest(df):
+    """割安ワイド買いの検証。補正と基準は前半70%で決め、後半30%で確かめる。"""
+    df = df.dropna(subset=["odds_min", "p_tan"])
+    dates = sorted(df["date"].unique())
+    cut = dates[int(len(dates) * 0.7)]
+    a, b = df[df["date"] < cut], df[df["date"] >= cut]
+    calib = value.fit(a["p_tan"], a["hit"])
+    print(f"\n--- 割安ワイド買い（3連単オッズから逆算した確率 × ワイドオッズ）---")
+    print(f"前半 {a['race_id'].nunique()}R（〜{cut}の前日） / 後半 {b['race_id'].nunique()}R（{cut}〜{dates[-1]}）")
+    for max_odds in [5.0, 10.0, 1e9]:
+        for min_ev in [0.9, 1.0, 1.1]:
+            for name, d in [("前半", a), ("後半", b)]:
+                sel = value.select(value.add_ev(d, calib), min_ev, max_odds)
+                cap = "上限なし" if max_odds > 1e6 else f"{max_odds:.0f}倍以下"
+                report(f"{name} 期待値{min_ev:.1f}以上 / オッズ{cap}", sel, d["race_id"].nunique())
+    value.save(value.fit(df["p_tan"], df["hit"]))  # 全データで補正を作り直して保存
+    print(f"保存: {value.CALIB}")
 
 
 def pick(df, min_odds=1.0, min_prob=0.0):
@@ -35,12 +60,13 @@ def pick(df, min_odds=1.0, min_prob=0.0):
 
 
 def report(name, sel, n_races):
-    print(f"{name:<34} 購入{len(sel):>5}R ({len(sel) / n_races:>4.0%})  的中率 {sel['hit'].mean():.1%}"
+    print(f"{name:<34} 購入{len(sel):>5}点 ({sel['race_id'].nunique() / n_races:>4.0%}のレース)  的中率 {sel['hit'].mean():.1%}"
           f"  回収率 {sel['payout'].sum() / (100 * len(sel)):.1%}  平均配当 {sel.loc[sel['hit'] == 1, 'payout'].mean():.0f}円")
 
 
 def main():
     df = build()
+    value_backtest(df)
     dates = sorted(df["date"].unique())
     d_va, d_te = dates[int(len(dates) * 0.6)], dates[int(len(dates) * 0.8)]
     tr, va, te = df[df["date"] < d_va], df[(df["date"] >= d_va) & (df["date"] < d_te)], df[df["date"] >= d_te]
