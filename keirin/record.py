@@ -7,6 +7,7 @@
 記録は data/live/ に保存する（リポジトリには入れない）。
 """
 import datetime as dt
+import gzip
 import json
 import re
 import sys
@@ -69,6 +70,10 @@ def grab(r, kind, calib):
         return None
     if kind == "final" and not d["race"]["finished"]:
         return None
+    if kind == "snap":  # 後から別の判定方法でも検証できるよう、締切2分前のページも残す
+        (OUT / "html").mkdir(exist_ok=True)
+        with gzip.open(OUT / "html" / f"snap_{r['rid']}.html.gz", "wt", encoding="utf-8") as f:
+            f.write(html)
     df = pairs(d)
     if df["odds_min"].isna().all() or df["p_tan"].isna().all():
         return None
