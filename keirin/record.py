@@ -1,4 +1,4 @@
-"""締切2分前の買い目を記録し、確定後の結果と突き合わせる（実戦に近い条件での成績測定）。
+"""締切10分前・2分前の買い目を記録し、確定後の結果と突き合わせる（実戦に近い条件での成績測定）。
 
 使い方:
   python -m keirin.record run [分]   # 指定した分数（既定110分）だけ記録して終了する。再実行で続きから進む
@@ -25,7 +25,7 @@ from .scrape import INTERVAL, get, race_urls
 
 JST = ZoneInfo("Asia/Tokyo")
 OUT = Path(__file__).resolve().parent.parent / "data" / "live"
-SNAP_BEFORE = dt.timedelta(seconds=120)  # 締切の何秒前に記録するか
+SNAPS = {"snap": 120, "snap10": 600}  # 記録の種類と、締切の何秒前に記録するか（10分前はオッズの動きを見るため）
 RESULT_AFTER = dt.timedelta(minutes=12)  # 締切の何分後から結果を取りに行くか
 RESULT_GIVEUP = dt.timedelta(hours=3)
 
@@ -70,9 +70,9 @@ def grab(r, kind, calib):
         return None
     if kind == "final" and not d["race"]["finished"]:
         return None
-    if kind == "snap":  # 後から別の判定方法でも検証できるよう、締切2分前のページも残す
+    if kind in SNAPS:  # 後から別の判定方法でも検証できるよう、締切前のページも残す
         (OUT / "html").mkdir(exist_ok=True)
-        with gzip.open(OUT / "html" / f"snap_{r['rid']}.html.gz", "wt", encoding="utf-8") as f:
+        with gzip.open(OUT / "html" / f"{kind}_{r['rid']}.html.gz", "wt", encoding="utf-8") as f:
             f.write(html)
     df = pairs(d)
     if df["odds_min"].isna().all() or df["p_tan"].isna().all():
@@ -101,19 +101,19 @@ def run(minutes=110):
         for r in races:
             snap, final = OUT / f"snap_{r['rid']}.parquet", OUT / f"final_{r['rid']}.parquet"
             t = now()
-            if snap.exists() and not final.exists() and r["close_dt"] + RESULT_AFTER < t < r["close_dt"] + RESULT_GIVEUP:
+            if (snap.exists() or (OUT / f"snap10_{r['rid']}.parquet").exists()) and not final.exists() and r["close_dt"] + RESULT_AFTER < t < r["close_dt"] + RESULT_GIVEUP:
                 if t - tried.get(r["rid"], t - dt.timedelta(hours=1)) >= dt.timedelta(minutes=5):
                     tried[r["rid"]] = t
                     ok = grab(r, "final", calib) is not None
                     print(f"{t:%m/%d %H:%M} 結果 {r['rid']} {'取得' if ok else '未確定'}", flush=True)
-        # 締切2分前の記録
-        due = [r for r in races
-               if not (OUT / f"snap_{r['rid']}.parquet").exists()
-               and r["close_dt"] - SNAP_BEFORE <= now() < r["close_dt"] - dt.timedelta(seconds=30)]
-        for r in sorted(due, key=lambda r: r["close_dt"]):
-            df = grab(r, "snap", calib)
+        # 締切前の記録（10分前と2分前。それぞれ90秒の幅で1回だけ）
+        due = [(kind, r) for kind, sec in SNAPS.items() for r in races
+               if not (OUT / f"{kind}_{r['rid']}.parquet").exists()
+               and r["close_dt"] - dt.timedelta(seconds=sec) <= now() < r["close_dt"] - dt.timedelta(seconds=sec - 90)]
+        for kind, r in sorted(due, key=lambda x: x[1]["close_dt"]):
+            df = grab(r, kind, calib)
             n = 0 if df is None else len(value.select(df))
-            print(f"{now():%m/%d %H:%M:%S} 記録 {r['rid']} 締切{r['close_dt']:%H:%M} 買い目{n}点", flush=True)
+            print(f"{now():%m/%d %H:%M:%S} 記録({kind}) {r['rid']} 締切{r['close_dt']:%H:%M} 買い目{n}点", flush=True)
         time.sleep(15)
     print("区切りの時間に達したので終了", flush=True)
 
